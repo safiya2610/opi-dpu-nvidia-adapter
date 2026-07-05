@@ -6,7 +6,54 @@ This document proposes a Kubernetes operator architecture design to integrate NV
 
 ---
 
-## 2. Integration Design Options
+## 2. Implementation Snapshot
+
+The current repository implements the recommended adapter pattern with the following concrete pieces:
+
+- The OPI-facing CRD remains the vendor-neutral DPUCluster resource.
+- The adapter layer translates that resource into real upstream NVIDIA DOCA Platform CRDs using the NVIDIA API packages for DPUSet and DPUService.
+- The reconciler flow is split into focused helpers for DPUSet reconciliation, DPUService reconciliation, and status propagation.
+- The parent DPUCluster status is updated from the child NVIDIA resources using Kubernetes conditions so readiness can be shown clearly.
+
+### Key Files
+- `api/v1alpha1/dpf_types.go` – aliases the real NVIDIA DPUSet and DPUService types into the adapter project.
+- `pkg/adapter/translator.go` – implements the vendor adapter interface for NVIDIA.
+- `controllers/opicluster_reconciler.go` – performs reconciliation and status propagation.
+- `controllers/opicluster_reconciler_test.go` – validates create/update/status propagation through a fake client.
+- `examples/demo_run.go` – demonstrates the translation logic with a sample DPUCluster.
+
+## 3. How to Show This to Your Mentor
+
+Use a short 5–7 minute walkthrough:
+
+1. Start with the problem statement: OPI is vendor-neutral, but NVIDIA already has a mature DPF operator.
+2. Show the architectural decision: reuse NVIDIA’s operator via an adapter instead of re-implementing firmware and service workflows.
+3. Walk through the translation flow from DPUCluster to DPUSet and DPUService.
+4. Point out the modular reconciler: one function creates/updates the DPUSet, another handles the DPUService, and a third propagates readiness.
+5. Show the verification evidence: `go test ./...` passes.
+6. Mention the extension story: the same adapter interface can support AMD or Intel later.
+
+### Mentor Demo Script
+
+- “The OPI operator remains the entry point for users.”
+- “The adapter converts the neutral OPI spec into NVIDIA-specific objects.”
+- “The NVIDIA operator still owns the real provisioning lifecycle.”
+- “The OPI resource becomes the single pane of glass for status and health.”
+
+### Commands to Run During the Demo
+
+```bash
+go test ./...
+go run ./examples
+```
+
+Expected outcome:
+- `go test ./...` should pass.
+- The example should print the translated NVIDIA DPUSet and DPUService values derived from the sample OPI DPUCluster.
+
+---
+
+## 4. Integration Design Options
 
 We evaluated three architectural patterns for integrating NVIDIA support into the OPI operator:
 

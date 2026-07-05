@@ -13,7 +13,7 @@ func main() {
 	fmt.Println("OPI DPU Operator NVIDIA Adapter: Live Demo Translation")
 	fmt.Println("=====================================================================")
 
-	// 1. Define sample input DPUCluster
+	// Defined sample input DPUCluster #Safiya :)
 	cluster := &opiv1alpha1.DPUCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "prod-nvidia-dpu-cluster",
@@ -51,15 +51,14 @@ func main() {
 	fmt.Println("=====================================================================")
 	fmt.Printf("[OUTPUT 1] Generated NVIDIA DPF DPUSet Spec:\n")
 	fmt.Printf("  - Name: %s\n", dpuset.Name)
-	fmt.Printf("  - BFB Bootstream: %s\n", dpuset.Spec.BFB)
-	fmt.Printf("  - Flavor Preset: %s\n", dpuset.Spec.Flavor)
-	fmt.Printf("  - Node Selector: %v\n\n", dpuset.Spec.DpuNodeSelector)
+	fmt.Printf("  - BFB Bootstream: %s\n", dpuset.Spec.DPUTemplate.Spec.BFB)
+	fmt.Printf("  - Flavor Preset: %s\n", dpuset.Spec.DPUTemplate.Spec.DPUFlavor)
+	fmt.Printf("  - Node Selector: %v\n\n", dpuset.Spec.DPUNodeSelector)
 
 	fmt.Printf("[OUTPUT 2] Generated NVIDIA DPF DPUService Spec:\n")
 	fmt.Printf("  - Name: %s\n", dpuservice.Name)
-	fmt.Printf("  - Service Type: %s\n", dpuservice.Spec.ServiceType)
-	fmt.Printf("  - Association DPUSet: %s\n", dpuservice.Spec.DPUSetName)
-	fmt.Printf("  - JSON Configuration: %s\n", dpuservice.Spec.Config)
+	fmt.Printf("  - Service ID: %v\n", dpuservice.Spec.ServiceID)
+	fmt.Printf("  - Deploy In Cluster: %v\n", dpuservice.Spec.DeployInCluster)
 	fmt.Println("=====================================================================")
 	fmt.Println("Success: Translation works perfectly!")
 }

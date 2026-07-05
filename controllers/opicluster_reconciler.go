@@ -23,6 +23,7 @@ type DPUClusterReconciler struct {
 	Scheme   *runtime.Scheme
 	Log      logr.Logger
 	Recorder record.EventRecorder
+	Adapter  adapter.VendorAdapter
 }
 
 // +kubebuilder:rbac:groups=opi.io,resources=dpuclusters,verbs=get;list;watch;create;update;patch;delete
@@ -36,20 +37,15 @@ type DPUClusterReconciler struct {
 func (r *DPUClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("dpucluster", req.NamespacedName)
 
-	// 1. Fetch the DPUCluster instance
 	var cluster opiv1alpha1.DPUCluster
 	if err := r.Get(ctx, req.NamespacedName, &cluster); err != nil {
 		if apierrors.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Return and don't requeue
 			return ctrl.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		log.Error(err, "Failed to get DPUCluster")
 		return ctrl.Result{}, err
 	}
 
-	// 2. Check vendor - if not nvidia, skip it
 	if cluster.Spec.Vendor != "nvidia" {
 		log.Info("Skipping DPUCluster: vendor is not nvidia", "vendor", cluster.Spec.Vendor)
 		return ctrl.Result{}, nil
@@ -57,109 +53,140 @@ func (r *DPUClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	log.Info("Reconciling NVIDIA DPUCluster")
 
-	// 3. Reconcile DPUSet
-	desiredDPUSet := adapter.TranslateDPUClusterToDPUSet(&cluster)
+	vendorAdapter := r.Adapter
+	if vendorAdapter == nil {
+		vendorAdapter = adapter.DefaultVendorAdapter
+	}
+
+	desiredDPUSet := vendorAdapter.TranslateDPUSet(&cluster)
+	if desiredDPUSet == nil {
+		return ctrl.Result{}, nil
+	}
 	if err := controllerutil.SetControllerReference(&cluster, desiredDPUSet, r.Scheme); err != nil {
 		log.Error(err, "Failed to set controller reference on DPUSet")
 		return ctrl.Result{}, err
 	}
 
-	var existingDPUSet opiv1alpha1.DPUSet
-	err := r.Get(ctx, client.ObjectKey{Namespace: desiredDPUSet.Namespace, Name: desiredDPUSet.Name}, &existingDPUSet)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Creating a new DPUSet", "Namespace", desiredDPUSet.Namespace, "Name", desiredDPUSet.Name)
-			if err := r.Create(ctx, desiredDPUSet); err != nil {
-				log.Error(err, "Failed to create DPUSet")
-				r.Recorder.Event(&cluster, "Warning", "CreationFailed", fmt.Sprintf("Failed to create DPUSet %s", desiredDPUSet.Name))
-				return ctrl.Result{}, err
-			}
-			r.Recorder.Event(&cluster, "Normal", "Created", fmt.Sprintf("Created DPUSet %s", desiredDPUSet.Name))
-		} else {
-			log.Error(err, "Failed to get DPUSet")
-			return ctrl.Result{}, err
-		}
-	} else {
-		// Update existing DPUSet if specs mismatch
-		if existingDPUSet.Spec.BFB != desiredDPUSet.Spec.BFB || existingDPUSet.Spec.Flavor != desiredDPUSet.Spec.Flavor {
-			existingDPUSet.Spec.BFB = desiredDPUSet.Spec.BFB
-			existingDPUSet.Spec.Flavor = desiredDPUSet.Spec.Flavor
-			existingDPUSet.Spec.DpuNodeSelector = desiredDPUSet.Spec.DpuNodeSelector
-			log.Info("Updating existing DPUSet", "Namespace", existingDPUSet.Namespace, "Name", existingDPUSet.Name)
-			if err := r.Update(ctx, &existingDPUSet); err != nil {
-				log.Error(err, "Failed to update DPUSet")
-				return ctrl.Result{}, err
-			}
-		}
-	}
-
-	// 4. Reconcile DPUService
-	var existingDPUService opiv1alpha1.DPUService
-	serviceExists := false
-	desiredDPUService := adapter.TranslateDPUClusterToDPUService(&cluster, desiredDPUSet.Name)
-	if desiredDPUService != nil {
-		if err := controllerutil.SetControllerReference(&cluster, desiredDPUService, r.Scheme); err != nil {
-			log.Error(err, "Failed to set controller reference on DPUService")
-			return ctrl.Result{}, err
-		}
-
-		err = r.Get(ctx, client.ObjectKey{Namespace: desiredDPUService.Namespace, Name: desiredDPUService.Name}, &existingDPUService)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				log.Info("Creating a new DPUService", "Namespace", desiredDPUService.Namespace, "Name", desiredDPUService.Name)
-				if err := r.Create(ctx, desiredDPUService); err != nil {
-					log.Error(err, "Failed to create DPUService")
-					r.Recorder.Event(&cluster, "Warning", "CreationFailed", fmt.Sprintf("Failed to create DPUService %s", desiredDPUService.Name))
-					return ctrl.Result{}, err
-				}
-				r.Recorder.Event(&cluster, "Normal", "Created", fmt.Sprintf("Created DPUService %s", desiredDPUService.Name))
-			} else {
-				log.Error(err, "Failed to get DPUService")
-				return ctrl.Result{}, err
-			}
-		} else {
-			serviceExists = true
-			// Update existing DPUService if spec mismatch
-			if existingDPUService.Spec.Config != desiredDPUService.Spec.Config {
-				existingDPUService.Spec.Config = desiredDPUService.Spec.Config
-				log.Info("Updating existing DPUService", "Namespace", existingDPUService.Namespace, "Name", existingDPUService.Name)
-				if err := r.Update(ctx, &existingDPUService); err != nil {
-					log.Error(err, "Failed to update DPUService")
-					return ctrl.Result{}, err
-				}
-			}
-		}
-	}
-
-	// 5. Check status of underlying resources and propagate to DPUCluster
-	// Fetch latest DPUSet to get the current status
-	err = r.Get(ctx, client.ObjectKey{Namespace: desiredDPUSet.Namespace, Name: desiredDPUSet.Name}, &existingDPUSet)
+	existingDPUSet, err := r.reconcileDPUSet(ctx, &cluster, desiredDPUSet, log)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	dpusetReady := existingDPUSet.Status.Ready
-	dpusetPhase := existingDPUSet.Status.Phase
+	desiredDPUService := vendorAdapter.TranslateDPUService(&cluster, existingDPUSet.Name)
+	existingDPUService, serviceExists, err := r.reconcileDPUService(ctx, &cluster, desiredDPUService, log)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err := r.updateStatus(ctx, &cluster, existingDPUSet, existingDPUService, serviceExists, log); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *DPUClusterReconciler) reconcileDPUSet(ctx context.Context, cluster *opiv1alpha1.DPUCluster, desired *opiv1alpha1.DPUSet, log logr.Logger) (*opiv1alpha1.DPUSet, error) {
+	var existing opiv1alpha1.DPUSet
+	err := r.Get(ctx, client.ObjectKey{Namespace: desired.Namespace, Name: desired.Name}, &existing)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Creating a new DPUSet", "Namespace", desired.Namespace, "Name", desired.Name)
+			if err := r.Create(ctx, desired); err != nil {
+				log.Error(err, "Failed to create DPUSet")
+				r.Recorder.Event(cluster, "Warning", "CreationFailed", fmt.Sprintf("Failed to create DPUSet %s", desired.Name))
+				return nil, err
+			}
+			r.Recorder.Event(cluster, "Normal", "Created", fmt.Sprintf("Created DPUSet %s", desired.Name))
+			return desired, nil
+		}
+		log.Error(err, "Failed to get DPUSet")
+		return nil, err
+	}
+
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	existing.Annotations = desired.Annotations
+	log.Info("Updating existing DPUSet", "Namespace", existing.Namespace, "Name", existing.Name)
+	if err := r.Update(ctx, &existing); err != nil {
+		log.Error(err, "Failed to update DPUSet")
+		return nil, err
+	}
+
+	return &existing, nil
+}
+
+func (r *DPUClusterReconciler) reconcileDPUService(ctx context.Context, cluster *opiv1alpha1.DPUCluster, desired *opiv1alpha1.DPUService, log logr.Logger) (*opiv1alpha1.DPUService, bool, error) {
+	if desired == nil {
+		var existing opiv1alpha1.DPUService
+		err := r.Get(ctx, client.ObjectKey{Namespace: cluster.Namespace, Name: fmt.Sprintf("%s-dpuservice", cluster.Name)}, &existing)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, false, nil
+			}
+			return nil, false, err
+		}
+
+		log.Info("Deleting old DPUService", "Namespace", existing.Namespace, "Name", existing.Name)
+		if err := r.Delete(ctx, &existing); err != nil {
+			log.Error(err, "Failed to delete DPUService")
+			return nil, true, err
+		}
+		return nil, true, nil
+	}
+
+	if err := controllerutil.SetControllerReference(cluster, desired, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference on DPUService")
+		return nil, false, err
+	}
+
+	var existing opiv1alpha1.DPUService
+	err := r.Get(ctx, client.ObjectKey{Namespace: desired.Namespace, Name: desired.Name}, &existing)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Creating a new DPUService", "Namespace", desired.Namespace, "Name", desired.Name)
+			if err := r.Create(ctx, desired); err != nil {
+				log.Error(err, "Failed to create DPUService")
+				r.Recorder.Event(cluster, "Warning", "CreationFailed", fmt.Sprintf("Failed to create DPUService %s", desired.Name))
+				return nil, false, err
+			}
+			r.Recorder.Event(cluster, "Normal", "Created", fmt.Sprintf("Created DPUService %s", desired.Name))
+			return desired, false, nil
+		}
+		log.Error(err, "Failed to get DPUService")
+		return nil, false, err
+	}
+
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	existing.Annotations = desired.Annotations
+	log.Info("Updating existing DPUService", "Namespace", existing.Namespace, "Name", existing.Name)
+	if err := r.Update(ctx, &existing); err != nil {
+		log.Error(err, "Failed to update DPUService")
+		return nil, true, err
+	}
+
+	return &existing, true, nil
+}
+
+func (r *DPUClusterReconciler) updateStatus(ctx context.Context, cluster *opiv1alpha1.DPUCluster, existingDPUSet *opiv1alpha1.DPUSet, existingDPUService *opiv1alpha1.DPUService, serviceExists bool, log logr.Logger) error {
+	var latestDPUSet opiv1alpha1.DPUSet
+	if err := r.Get(ctx, client.ObjectKey{Namespace: existingDPUSet.Namespace, Name: existingDPUSet.Name}, &latestDPUSet); err != nil {
+		return err
+	}
+
+	dpusetReady, dpusetPhase, _ := conditionState(latestDPUSet.Status.Conditions, "Ready")
 
 	serviceReady := true
-	if desiredDPUService != nil {
-		err = r.Get(ctx, client.ObjectKey{Namespace: desiredDPUService.Namespace, Name: desiredDPUService.Name}, &existingDPUService)
-		if err != nil {
-			return ctrl.Result{}, err
+	if existingDPUService != nil {
+		var latestDPUService opiv1alpha1.DPUService
+		if err := r.Get(ctx, client.ObjectKey{Namespace: existingDPUService.Namespace, Name: existingDPUService.Name}, &latestDPUService); err != nil {
+			return err
 		}
-		serviceReady = existingDPUService.Status.Ready
+		serviceReady, _, _ = conditionState(latestDPUService.Status.Conditions, "Ready")
 	} else if serviceExists {
-		// If desired service is nil but it exists, it means offloading was disabled/removed.
-		// Delete the resource
-		log.Info("Deleting old DPUService", "Namespace", existingDPUService.Namespace, "Name", existingDPUService.Name)
-		if err := r.Delete(ctx, &existingDPUService); err != nil {
-			log.Error(err, "Failed to delete DPUService")
-			return ctrl.Result{}, err
-		}
 		serviceReady = true
 	}
 
-	// 6. Propagate Phase and Ready conditions
 	var newPhase string
 	var newReady bool
 	var msg string
@@ -171,7 +198,7 @@ func (r *DPUClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		} else {
 			newPhase = "DPUProvisioning"
 		}
-		msg = fmt.Sprintf("Waiting for DPUSet: %s", existingDPUSet.Status.Message)
+		msg = fmt.Sprintf("Waiting for DPUSet: %s", latestDPUSet.Name)
 	} else if !serviceReady {
 		newReady = false
 		newPhase = "ServiceConfiguring"
@@ -182,44 +209,55 @@ func (r *DPUClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		msg = "All DPUs provisioned and services deployed."
 	}
 
-	// Apply status updates
-	if cluster.Status.Ready != newReady || cluster.Status.Phase != newPhase {
-		cluster.Status.Ready = newReady
-		cluster.Status.Phase = newPhase
+	return r.updateConditions(cluster, newReady, newPhase, msg, log)
+}
 
-		// Set Condition
-		cond := metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Now(),
-			Reason:             newPhase,
-			Message:            msg,
+func conditionState(conditions []metav1.Condition, conditionType string) (bool, string, string) {
+	for _, condition := range conditions {
+		if condition.Type != conditionType {
+			continue
 		}
-		if newReady {
-			cond.Status = metav1.ConditionTrue
-		}
+		return condition.Status == metav1.ConditionTrue, condition.Reason, condition.Message
+	}
+	return false, "", ""
+}
 
-		// Basic condition helper: replace or append
-		found := false
-		for i, c := range cluster.Status.Conditions {
-			if c.Type == "Ready" {
-				cluster.Status.Conditions[i] = cond
-				found = true
-				break
-			}
-		}
-		if !found {
-			cluster.Status.Conditions = append(cluster.Status.Conditions, cond)
-		}
-
-		log.Info("Updating DPUCluster status", "Phase", newPhase, "Ready", newReady)
-		if err := r.Status().Update(ctx, &cluster); err != nil {
-			log.Error(err, "Failed to update DPUCluster status")
-			return ctrl.Result{}, err
-		}
+func (r *DPUClusterReconciler) updateConditions(cluster *opiv1alpha1.DPUCluster, newReady bool, newPhase, msg string, log logr.Logger) error {
+	if cluster.Status.Ready == newReady && cluster.Status.Phase == newPhase {
+		return nil
 	}
 
-	return ctrl.Result{}, nil
+	cluster.Status.Ready = newReady
+	cluster.Status.Phase = newPhase
+
+	cond := metav1.Condition{
+		Type:               "Ready",
+		Status:             metav1.ConditionFalse,
+		LastTransitionTime: metav1.Now(),
+		Reason:             newPhase,
+		Message:            msg,
+	}
+	if newReady {
+		cond.Status = metav1.ConditionTrue
+	}
+
+	found := false
+	for i, c := range cluster.Status.Conditions {
+		if c.Type == "Ready" {
+			cluster.Status.Conditions[i] = cond
+			found = true
+			break
+		}
+	}
+	if !found {
+		cluster.Status.Conditions = append(cluster.Status.Conditions, cond)
+	}
+
+	log.Info("Updating DPUCluster status", "Phase", newPhase, "Ready", newReady)
+	if err := r.Status().Update(context.Background(), cluster); err != nil {
+		return err
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

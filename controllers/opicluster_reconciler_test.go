@@ -79,8 +79,12 @@ func TestDPUClusterReconciler_Reconcile(t *testing.T) {
 		t.Fatalf("expected DPUSet to be created, got error: %v", err)
 	}
 
-	if dpuset.Spec.BFB != "http://nvidia.com/bfb-v3.0.bfb" || dpuset.Spec.Flavor != "medium" {
-		t.Errorf("DPUSet fields not translated correctly: %+v", dpuset.Spec)
+	if dpuset.Spec.DPUTemplate.Spec.BFB == nil || dpuset.Spec.DPUTemplate.Spec.BFB.Name != "http://nvidia.com/bfb-v3.0.bfb" {
+		t.Errorf("expected DPUSet BFB reference to be translated correctly: %+v", dpuset.Spec.DPUTemplate.Spec.BFB)
+	}
+
+	if dpuset.Spec.DPUTemplate.Spec.DPUFlavor != "medium" {
+		t.Errorf("expected DPUSet flavor to be translated correctly: %s", dpuset.Spec.DPUTemplate.Spec.DPUFlavor)
 	}
 
 	// Verify DPUService is created
@@ -91,15 +95,26 @@ func TestDPUClusterReconciler_Reconcile(t *testing.T) {
 	}
 
 	// Simulate DPUSet becoming ready
-	dpuset.Status.Ready = true
-	dpuset.Status.Phase = "Ready"
+	dpuset.Status.Conditions = []metav1.Condition{{
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		Reason:             "Ready",
+		Message:            "DPUSet is ready",
+		LastTransitionTime: metav1.Now(),
+	}}
 	err = fakeClient.Status().Update(context.Background(), &dpuset)
 	if err != nil {
 		t.Fatalf("failed to update DPUSet status: %v", err)
 	}
 
 	// Simulate DPUService becoming ready
-	dpuservice.Status.Ready = true
+	dpuservice.Status.Conditions = []metav1.Condition{{
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		Reason:             "Ready",
+		Message:            "DPUService is ready",
+		LastTransitionTime: metav1.Now(),
+	}}
 	err = fakeClient.Status().Update(context.Background(), &dpuservice)
 	if err != nil {
 		t.Fatalf("failed to update DPUService status: %v", err)
