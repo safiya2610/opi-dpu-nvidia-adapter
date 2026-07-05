@@ -4,6 +4,8 @@
 
 This document proposes a Kubernetes operator architecture design to integrate NVIDIA BlueField Data Processing Units (DPUs) into the unified Open Programmable Infrastructure (OPI) operator ecosystem. By utilizing an **Adapter/CRD Translation Layer**, the OPI DPU Operator can orchestrate NVIDIA hardware by driving the upstream NVIDIA DOCA Platform Framework (DPF) operator. This maximizes the reuse of existing vendor-specific controllers and maintains a clean, vendor-neutral interface for end users.
 
+In this design, NVIDIA BlueField support is implemented by reusing DPF rather than rebuilding provisioning logic in the OPI adapter itself. The adapter translates an OPI DPUCluster into NVIDIA DPF resources such as DPUSet and DPUService, and the upstream NVIDIA DPF operator handles the real BlueField lifecycle operations.
+
 ---
 
 ## 2. Implementation Snapshot

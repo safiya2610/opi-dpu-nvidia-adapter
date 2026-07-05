@@ -25,6 +25,14 @@ go run ./examples
 This project is a small proof-of-concept operator that adds NVIDIA support to an OPI-based DPU workflow.
 It uses an adapter layer to translate an OPI DPUCluster into NVIDIA DPF resources such as DPUSet and DPUService.
 
+## NVIDIA DOCA Platform Framework (DPF) and BlueField Reuse
+
+This adapter adds NVIDIA BlueField support by reusing the upstream NVIDIA DOCA Platform Framework (DPF) ( https://github.com/NVIDIA/doca-platform/ ) instead of re-implementing DPU provisioning from scratch.
+The OPI-facing DPUCluster resource remains vendor-neutral, but the adapter translates it into NVIDIA DPF custom resources such as DPUSet and DPUService.
+The reconciler then creates or updates those resources, and the actual BlueField lifecycle work is delegated to the NVIDIA DPF operator that watches those CRs.
+
+This keeps the OPI layer simple and portable while still leveraging NVIDIA's existing platform workflow for firmware bootstrapping, device onboarding, and service orchestration.
+
 ## What I Did
 
 I added NVIDIA support to the OPI operator by building a simple translation layer.
