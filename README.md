@@ -1,4 +1,5 @@
 # OPI DPU Operator - NVIDIA DPF Adapter
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/32847cc0-ea6a-4a52-aa85-fa1d14c428eb" />
 
 ## Demo
 ```bash
