@@ -1,4 +1,25 @@
-# OPI DPU NVIDIA Adapter
+# OPI DPU Operator - NVIDIA DPF Adapter
+
+## Demo
+```bash
+go run ./examples
+```
+<img width="935" height="480" alt="Screenshot (3386)" src="https://github.com/user-attachments/assets/7b85094c-0c9b-431c-8038-d318045d7778" />
+
+## This demo prints the input OPI spec and the generated NVIDIA DPF objects.
+
+## Table of Contents
+
+- [What I Did](#what-i-did)
+- [Why This Design](#why-this-design)
+- [Repository Layout](#repository-layout)
+- [Architecture Overview](#architecture-overview)
+- [Key Features](#key-features)
+- [How It Works](#how-it-works)
+- [Design Process & LLM Prompting](#design-process--llm-prompting)
+- [Demo](#demo)
+- [Tests](#tests)
+- [Local Verification](#local-verification)
 
 This project is a small proof-of-concept operator that adds NVIDIA support to an OPI-based DPU workflow.
 It uses an adapter layer to translate an OPI DPUCluster into NVIDIA DPF resources such as DPUSet and DPUService.
@@ -14,7 +35,7 @@ The controller now takes an OPI DPUCluster, translates it into NVIDIA resources,
 The main idea is to keep the OPI layer simple while reusing NVIDIA's existing DPF workflow instead of rebuilding everything from scratch.
 This makes the code easier to understand and easier to extend later for other vendors.
 
-## Project Structure
+## Repository Layout
 
 | File/Folder | Purpose |
 |---|---|
@@ -24,6 +45,44 @@ This makes the code easier to understand and easier to extend later for other ve
 | examples | Includes a demo program that shows the translation flow in a simple way. |
 | main.go | Starts the controller manager and registers the reconciler. |
 
+## Architecture Overview
+
+The architecture follows a simple adapter-based flow:
+
+1. OPI provides a vendor-neutral input resource called DPUCluster.
+2. The adapter translates that input into NVIDIA-specific DPF resources.
+3. The reconciler creates or updates those resources in the cluster.
+4. The status of the child resources is reflected back to the OPI object.
+
+This keeps the OPI layer clean while reusing NVIDIA's native DPF workflow.
+
+```text
+[ Cluster Admin ]
+        │
+        ▼
+  Apply OPI DPU Cluster
+        │
+        ▼
+OPI DPU Operator Core
+        │
+        ▼
+ NVIDIA DPF Adapter
+        │
+        ▼
+ NVIDIA DPF Operator
+        │
+        ▼
+  Provision DPU Resources
+```
+
+## Key Features
+
+- Vendor-aware reconciliation for NVIDIA.
+- Adapter-based translation from OPI to NVIDIA DPF resources.
+- Clean separation between OPI logic and vendor-specific logic.
+- Simple demo flow for understanding and presentation.
+- Basic status propagation from child resources to parent status.
+
 ## How It Works
 
 1. A user creates an OPI DPUCluster resource.
@@ -31,6 +90,18 @@ This makes the code easier to understand and easier to extend later for other ve
 3. The adapter converts the OPI object into NVIDIA DPF resources.
 4. The controller creates or updates those resources.
 5. Status from the NVIDIA resources is reflected back to the OPI resource.
+
+## Design Process & LLM Prompting
+
+This project was developed step by step by first understanding the OPI design, then identifying the NVIDIA DPF resources that should be mapped, and finally implementing a small adapter layer.
+The process focused on keeping the solution simple, maintainable, and close to the real operator pattern.
+The LLM prompting approach was used to break the task into smaller parts such as:
+
+- understand the OPI resource model,
+- inspect NVIDIA DPF types,
+- design an adapter-based approach,
+- implement reconciliation helpers,
+- verify behavior with tests and demo output.
 
 ## Demo
 
@@ -42,8 +113,9 @@ Run the demo:
 ```bash
 go run ./examples
 ```
+<img width="935" height="480" alt="Screenshot (3386)" src="https://github.com/user-attachments/assets/7b85094c-0c9b-431c-8038-d318045d7778" />
 
-This demo prints the input OPI spec and the generated NVIDIA DPF objects.
+## This demo prints the input OPI spec and the generated NVIDIA DPF objects.
 
 ## Tests
 
@@ -52,13 +124,3 @@ Run the full test suite:
 ```bash
 go test ./...
 ```
-
-## Local Verification
-
-The demo example was verified locally with:
-
-```bash
-go run ./examples
-```
-
-The output showed that the translation flow worked successfully.
