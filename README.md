@@ -1,6 +1,7 @@
 # OPI DPU Operator - NVIDIA DPF Adapter
 <img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/32847cc0-ea6a-4a52-aa85-fa1d14c428eb" />
-
+This project designs and implements an LLM-assisted adapter architecture to add NVIDIA BlueField DPU support to the OPI DPU Operator. It uses a vendor-neutral DPUCluster resource and translates it into NVIDIA DPF resources (DPUSet and DPUService) through an adapter layer. The solution follows Kubernetes operator patterns, reuses the existing NVIDIA DPF operator, includes a basic Go reconciliation skeleton, unit tests, a demo application, and architecture documentation generated with LLM assistance.
+##
 ## Demo (Added example so that anyone can understand how things are working)
 ```bash
 go run ./examples
