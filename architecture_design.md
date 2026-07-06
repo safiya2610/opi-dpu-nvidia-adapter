@@ -26,23 +26,8 @@ The current repository implements the recommended adapter pattern with the follo
 
 ## 3. How to Show This to Your Mentor
 
-Use a short 5–7 minute walkthrough:
 
-1. Start with the problem statement: OPI is vendor-neutral, but NVIDIA already has a mature DPF operator.
-2. Show the architectural decision: reuse NVIDIA’s operator via an adapter instead of re-implementing firmware and service workflows.
-3. Walk through the translation flow from DPUCluster to DPUSet and DPUService.
-4. Point out the modular reconciler: one function creates/updates the DPUSet, another handles the DPUService, and a third propagates readiness.
-5. Show the verification evidence: `go test ./...` passes.
-6. Mention the extension story: the same adapter interface can support AMD or Intel later.
-
-### Mentor Demo Script
-
-- “The OPI operator remains the entry point for users.”
-- “The adapter converts the neutral OPI spec into NVIDIA-specific objects.”
-- “The NVIDIA operator still owns the real provisioning lifecycle.”
-- “The OPI resource becomes the single pane of glass for status and health.”
-
-### Commands to Run During the Demo
+### Commands to Run
 
 ```bash
 go test ./...
@@ -55,9 +40,9 @@ Expected outcome:
 
 ---
 
-## 4. Integration Design Options
+## 4. Integration Design Options, And What I choosed
 
-We evaluated three architectural patterns for integrating NVIDIA support into the OPI operator:
+I evaluated three architectural patterns for integrating NVIDIA support into the OPI operator:
 
 ### Option A: Monolithic OPI Operator
 Build all NVIDIA-specific provisioning and service deployment logic directly into the main OPI operator.
@@ -69,7 +54,7 @@ Create an independent sub-operator binary managed by OPI that interacts directly
 *   **Pros:** Strong separation of concerns; modularity.
 *   **Cons:** High runtime overhead; complex cross-controller status synchronization; duplicate effort since NVIDIA already distributes an active platform operator (DPF).
 
-### Option C: Adapter / CRD Translation Layer (Recommended)
+### Option C: Adapter / CRD Translation Layer 
 An adapter controller inside OPI watches OPI custom resources (e.g., `DPUCluster`), translates them into NVIDIA DPF custom resources (`DPUSet`, `DPUService`), and lets the upstream NVIDIA DPF operator handle the physical hardware lifecycle.
 *   **Pros:** 
     *   **Maximum Reuse:** Leverages production-ready, vendor-supported code for BFB flashing, cluster joins, and DOCA services.
