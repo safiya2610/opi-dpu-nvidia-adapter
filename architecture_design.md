@@ -117,7 +117,7 @@ The system consists of the following modular layers:
 1.  **OPI CRD (DPUCluster):** A vendor-neutral resource describing the cluster-wide DPU requirements (node selectors, networking mode, firmware).
 2.  **VendorDetector:** An initial routing layer within the OPI reconciler that inspects the `DPUCluster` manifest. If `spec.vendor == "nvidia"`, it delegates reconciliation to the NVIDIA Adapter module.
 3.  **VendorVSP (Vendor Specific Plugin):** The abstract plugin architecture inside the OPI framework. Our NVIDIA Adapter acts as a concrete implementation of a VendorVSP for NVIDIA BlueField hardware.
-4.  **Translator Module & DPFClient Interface:** The adapter uses a stateless translator (`pkg/adapter/translator.go`) to convert OPI configurations into DPF-specific structs. To maintain clean architecture, interactions with the NVIDIA resources are abstracted via a `type DPFClient interface`. This strongly decouples the OPI core from direct Kubernetes client calls targeting proprietary resources and makes unit testing trivial.
+4. **Translator Module**: The adapter uses a stateless translator (pkg/adapter/translator.go) to convert OPI configurations into NVIDIA DPF-specific resources while keeping the OPI core vendor-neutral.
 5.  **NVIDIA DPF Operator:** The DOCA Platform Framework (DPF) target operator executing DPU-specific physical hardware provisioning. It watches DPF CRDs (`DPUSet`, `DPUService`).
 6.  **Status Sync & Propagation:** The adapter watches status changes of the child DPF CRDs (using owner references) and propagates ready states and errors back to the OPI `DPUCluster` status.
 
