@@ -24,8 +24,6 @@ The current repository implements the recommended adapter pattern with the follo
 - `controllers/opicluster_reconciler_test.go` – validates create/update/status propagation through a fake client.
 - `examples/demo_run.go` – demonstrates the translation logic with a sample DPUCluster.
 
-## 3. How to Show This to Your Mentor
-
 
 ### Commands to Run
 
