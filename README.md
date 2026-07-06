@@ -1,7 +1,7 @@
 # OPI DPU Operator - NVIDIA DPF Adapter
 <img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/32847cc0-ea6a-4a52-aa85-fa1d14c428eb" />
 
-## Demo
+## Demo (Added example so that anyone can understand how things are working)
 ```bash
 go run ./examples
 ```
@@ -99,6 +99,12 @@ OPI DPU Operator Core
 3. The adapter converts the OPI object into NVIDIA DPF resources.
 4. The controller creates or updates those resources.
 5. Status from the NVIDIA resources is reflected back to the OPI resource.
+
+## Examples & Notes
+
+- **Controller:** The reconciler reads values from the `DPUCluster` CR (`BFB`, `DpuFlavor`, `NodeSelector`, `NetworkOffloadMode`, etc.) and dynamically generates NVIDIA `DPUSet` and `DPUService`.
+- **VendorAdapter:** The reconciler uses a `VendorAdapter` interface so NVIDIA logic is separated from the main OPI controller and can be extended for AMD or other vendors.
+- **Example/demo:** The example in `examples/demo_run.go` uses sample data only for demonstration; the real controller reads Kubernetes resources in-cluster (see `controllers/opicluster_reconciler.go`).
 
 ## Design Process & LLM Prompting
 
